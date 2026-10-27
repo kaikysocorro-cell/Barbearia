@@ -1,0 +1,43 @@
+<!doctype html><meta charset=utf-8><title>Barbearia</title>
+<style>body{font-family:sans-serif;max-width:950px;margin:auto}nav a{margin-right:12px;cursor:pointer;color:#06c}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px}input,select{margin:2px}#m{color:#b00}</style>
+<div id=app></div>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');
+const api=async(u,m='GET',b)=>{const r=await fetch('/api/'+u,{method:m,headers:{'Content-Type':'application/json'},body:b&&JSON.stringify(b)});
+ const d=await r.json();if(r.status==401&&u!='login'){loginView(d.erro);throw 0}if(!r.ok)throw Error(d.erro);return d};
+const msg=t=>$('#m').textContent=t||'';
+const form=(id,f)=>$(id).onsubmit=async e=>{e.preventDefault();try{await f(Object.fromEntries(new FormData(e.target)));msg();e.target.reset()}catch(x){msg(x.message)}};
+const tbl=(h,rows)=>`<table><tr>${h.map(x=>`<th>${x}`).join('')}</tr>${rows}</table>`;
+
+function loginView(e=''){app.innerHTML=`<div style="max-width:300px;margin:80px auto"><h2>Barbearia - Login</h2><p id=m>${e}</p>
+<form id=f>Usuário<br><input name=login><br>Senha<br><input type=password name=senha><br><br><button>Entrar</button></form></div>`;
+ $('#f').onsubmit=async e=>{e.preventDefault();try{const d=await api('login','POST',Object.fromEntries(new FormData(e.target)));main(d.nome)}catch(x){if(x)msg(x.message)}}}
+
+function main(nome){app.innerHTML=`<nav><a onclick="home()">Início</a><a onclick="clientes()">Clientes</a><a onclick="barbeiros()">Barbeiros/Serviços</a><a onclick="agend()">Agendamentos</a>
+<b style="float:right">${nome} | <a onclick="sair()">Sair</a></b></nav><p id=m></p><div id=c></div>`;window.nome=nome;home()}
+const home=()=>$('#c').innerHTML=`<h2>Painel Principal</h2><p>Bem-vindo(a), <b>${nome}</b>! Use o menu acima.</p>`;
+const sair=async()=>{await api('logout','POST');loginView('Sessão encerrada')};
+const del=(r,id,f)=>api(`${r}/${id}`,'DELETE').then(f).catch(x=>x&&msg(x.message));
+
+async function clientes(b=''){const l=await api('clientes?busca='+encodeURIComponent(b));
+ $('#c').innerHTML=`<h2>Clientes</h2><form id=f>Nome <input name=nome required> CPF <input name=cpf required> Telefone <input name=telefone> <button>Cadastrar</button></form>
+ <form id=s>Buscar <input name=busca value="${b}"> <button>Buscar</button> <a onclick="clientes()">Limpar</a></form><br>`+
+ tbl(['Nome','CPF','Telefone',''],l.map(r=>`<tr><td>${r.nome}<td>${r.cpf}<td>${r.telefone||''}<td><a onclick="del('clientes',${r.id},()=>clientes())">Excluir</a>`).join(''));
+ form('#f',async d=>{await api('clientes','POST',d);clientes()});$('#s').onsubmit=e=>{e.preventDefault();clientes(e.target.busca.value)}}
+
+async function barbeiros(){const[b,s]=await Promise.all([api('barbeiros'),api('servicos')]);
+ $('#c').innerHTML=`<h2>Barbeiros</h2><form id=fb>Nome <input name=nome required> CPF <input name=cpf required> Especialidade <input name=especialidade> <button>Salvar</button></form>`+
+ tbl(['Nome','CPF','Especialidade',''],b.map(r=>`<tr><td>${r.nome}<td>${r.cpf}<td>${r.especialidade||''}<td><a onclick="del('barbeiros',${r.id},barbeiros)">Excluir</a>`).join(''))+
+ `<h2>Serviços</h2><form id=fs>Serviço <input name=nome required> Preço <input name=preco type=number step=0.01 required> Duração(min) <input name=duracao_min type=number required>
+ Barbeiro <select name=barbeiro_id required><option value="">Selecione</option>${b.map(r=>`<option value=${r.id}>${r.nome}</option>`).join('')}</select> <button>Salvar</button></form>`+
+ tbl(['Serviço','Preço','Duração','Barbeiro',''],s.map(r=>`<tr><td>${r.nome}<td>R$ ${(+r.preco).toFixed(2)}<td>${r.duracao_min} min<td>${r.barbeiro}<td><a onclick="del('servicos',${r.id},barbeiros)">Excluir</a>`).join(''));
+ form('#fb',async d=>{await api('barbeiros','POST',d);barbeiros()});form('#fs',async d=>{await api('servicos','POST',d);barbeiros()})}
+
+async function agend(){const[c,s,a]=await Promise.all([api('clientes'),api('servicos'),api('agendamentos')]);
+ $('#c').innerHTML=`<h2>Agendamentos</h2><form id=f>Cliente <select name=cliente_id>${c.map(r=>`<option value=${r.id}>${r.nome}</option>`).join('')}</select>
+ Serviço <select name=servico_id>${s.map(r=>`<option value=${r.id}>${r.nome} - ${r.barbeiro}</option>`).join('')}</select> Data/Hora <input type=datetime-local name=data_hora required> <button>Agendar</button></form><br>`+
+ tbl(['Data','Hora','Cliente','CPF','Telefone','Serviço','Preço','Barbeiro',''],a.map(r=>`<tr><td>${r.dia}<td>${r.hora}<td>${r.cliente}<td>${r.cpf}<td>${r.telefone||''}<td>${r.servico}<td>R$ ${(+r.preco).toFixed(2)}<td>${r.barbeiro}<td><a onclick="del('agendamentos',${r.id},agend)">Cancelar</a>`).join(''));
+ form('#f',async d=>{await api('agendamentos','POST',d);agend()})}
+
+api('me').then(d=>main(d.nome)).catch(()=>loginView());
+</script>
